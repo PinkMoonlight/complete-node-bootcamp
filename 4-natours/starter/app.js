@@ -9,14 +9,16 @@ const app = express();
 
 //  MIDDLEWARES  - modify incoming request data (adds to the request)
 //middleware function
-app.use(morgan('dev')); // details about the api requests
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev')); // details about the api requests
+}
 app.use(express.json());
 // MIDDLEWARE SERVING STATIC FILEs
 //app.use(express.static(`${__dirname}/public`));
 
 //middleware function
 app.use((req, res, next) => {
-  console.log('Hello from the middleware 👾');
+  console.log('Hello from the middleware 👋');
   next(); //must include in order for it to move to next function!!
 });
 //middleware function
