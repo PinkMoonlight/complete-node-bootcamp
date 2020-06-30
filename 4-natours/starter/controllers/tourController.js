@@ -1,11 +1,187 @@
 const Tour = require('../models/tourModel');
 const APIFeatures = require('../utils/apiFeatures');
+const catchAsync = require('../utils/catchAsync');
+const AppError = require('../utils/appError');
 
+exports.aliasTopTours = (req, res, next) => {
+  // prefilling/ setting these query object fields
+  req.query.limit = '5';
+  req.query.sort = '-ratingsAverage,price';
+  req.query.fields = 'name,price,ratingsAverage,summary,difficulty';
+  next();
+};
+
+exports.getAllTours = catchAsync(async (req, res, next) => {
+  // EXECUTE QUERY
+  const features = new APIFeatures(Tour.find(), req.query)
+    .filter()
+    .sort()
+    .limitFields()
+    .paginate();
+  const tours = await features.query;
+
+  //SEND RESPONSE
+  res.status(200).json({
+    status: 'success',
+    results: tours.length,
+    data: {
+      tours,
+    },
+  });
+});
+
+exports.getTour = catchAsync(async (req, res, next) => {
+  //console.log(req.params); //paramaters of request method - ie :id/:x/:y? (the ? means not required/optional and will return undefinded)
+  //const id = req.params.id * 1; //converts string to number
+  //const tour = tours.find((el) => el.id === id);
+
+  const tour = await Tour.findById(req.params.id);
+  // above is shorthand for Tour.findOne({ _id: req.params.id}) filter object and value we want to search for
+
+  if (!tour) {
+    return next(new AppError('No tour found with that ID', 404));
+  }
+  res.status(200).json({
+    status: 'success',
+    data: {
+      tour,
+    },
+  });
+});
+
+exports.createTour = catchAsync(async (req, res, next) => {
+  //using Tour model directly with the create method- returns a promise
+  const newTour = await Tour.create(req.body);
+
+  res.status(201).json({
+    //201 'created' status code
+    status: 'success',
+    data: {
+      tour: newTour,
+    },
+  });
+});
+
+exports.updateTour = catchAsync(async (req, res, next) => {
+  const tour = await Tour.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!tour) {
+    return next(new AppError('No tour found with that ID', 404));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      tour,
+    },
+  });
+});
+
+exports.deleteTour = catchAsync(async (req, res, next) => {
+  const tour = await Tour.findByIdAndDelete(req.params.id);
+
+  if (!tour) {
+    return next(new AppError('No tour found with that ID', 404));
+  }
+  res.status(204).json({
+    //204 status means no content
+    status: 'success',
+    data: null,
+  });
+});
+
+exports.getTourStats = catchAsync(async (req, res, next) => {
+  const stats = await Tour.aggregate([
+    // Using Tour model to access the tour collection via mongoose
+    {
+      $match: { ratingsAverage: { $gte: 4.5 } }, // like a query/filter
+    },
+    {
+      $group: {
+        //group documents together using accumulators
+        _id: { $toUpper: '$difficulty' }, // null makes it one big group
+        numTours: { $sum: 1 },
+        numRatings: { $sum: '$ratingsQuantity' },
+        avgRating: { $avg: '$ratingsAverage' },
+        avgPrice: { $avg: '$price' }, // first the operator then the fieldname
+        minPrice: { $min: '$price' },
+        maxPrice: { $max: '$price' },
+      },
+    },
+    {
+      $sort: { avgPrice: 1 },
+    },
+    // {
+    //   $match: {
+    //     _id: { $ne: 'EASY' },
+    //   },
+    // },
+  ]);
+  res.status(200).json({
+    status: 'success',
+    data: {
+      stats,
+    },
+  });
+});
+
+exports.geMonthlyPlan = catchAsync(async (req, res, next) => {
+  const year = req.params.year * 1; //2021
+
+  const plan = await Tour.aggregate([
+    {
+      // separate by different start dates
+      $unwind: '$startDates',
+    },
+    {
+      $match: {
+        // to select docuemnts
+        startDates: {
+          $gte: new Date(`${year}-01-01`),
+          $lte: new Date(`${year}-12-31`),
+        },
+      },
+    },
+    {
+      $group: {
+        _id: { $month: `$startDates` }, // returns num between 1 - 12 representing the month
+        numTourStarts: { $sum: 1 },
+        tours: { $push: '$name' }, //creates an array with name of the tour
+      },
+    },
+    {
+      $addFields: { month: '$_id' },
+    },
+    {
+      $project: {
+        _id: 0, // 0 removes fieldname (_id) and 1 displays it (boolean)
+      },
+    },
+    {
+      $sort: { numTourStarts: -1 }, // -1 is decending
+    },
+    {
+      $limit: 12, // only 12 outputs
+    },
+  ]);
+  res.status(200).json({
+    status: 'success',
+    data: {
+      plan,
+    },
+  });
+});
+
+//
+// ALTERNATE CODE for reading data from file using fs (fileSync)
 /*
 const tours = JSON.parse(
   fs.readFileSync(`${__dirname}/../dev-data/data/tours-simple.json`)
 );
-
+// manual middleware to check for body.name or body.price in request. 
 exports.checkBody = (req, res, next) => {
   if (!req.body.name || !req.body.price) {
     return res.status(400).json({
@@ -16,201 +192,6 @@ exports.checkBody = (req, res, next) => {
   next();
 };
 */
-
-exports.aliasTopTours = (req, res, next) => {
-  // prefilling/ setting these query object fields
-  req.query.limit = '5';
-  req.query.sort = '-ratingsAverage,price';
-  req.query.fields = 'name,price,ratingsAverage,summary,difficulty';
-  next();
-};
-
-exports.getAllTours = async (req, res) => {
-  try {
-    // EXECUTE QUERY
-    const features = new APIFeatures(Tour.find(), req.query)
-      .filter()
-      .sort()
-      .limitFields()
-      .paginate();
-    const tours = await features.query;
-
-    //SEND RESPONSE
-    res.status(200).json({
-      status: 'success',
-      results: tours.length,
-      data: {
-        tours,
-      },
-    });
-  } catch (err) {
-    res.status(404).json({
-      status: 'fail',
-      mssage: err,
-    });
-  }
-};
-
-exports.getTour = async (req, res) => {
-  //console.log(req.params); //paramaters of request method - ie :id/:x/:y? (the ? means not required/optional and will return undefinded)
-  //const id = req.params.id * 1; //converts string to number
-  //const tour = tours.find((el) => el.id === id);
-  try {
-    const tour = await Tour.findById(req.params.id);
-    // above is shorthand for Tour.findOne({ _id: req.params.id}) filter object and value we want to search for
-    res.status(200).json({
-      status: 'success',
-      data: {
-        tour,
-      },
-    });
-  } catch (err) {
-    res.status(404).json({
-      status: 'fail',
-      message: 'Invalid request or ID',
-    });
-  }
-};
-
-exports.createTour = async (req, res) => {
-  // const newTour = new Tour({})
-  // newTour.save()
-  // OR
-
-  //using Tour model directly with the create method- returns a promise
-  try {
-    const newTour = await Tour.create(req.body);
-
-    res.status(201).json({
-      //201 'created' status code
-      status: 'success',
-      data: {
-        tour: newTour,
-      },
-    });
-  } catch (err) {
-    res.status(404).json({
-      status: 'fail',
-      message: err,
-    });
-  }
-};
-
-exports.updateTour = async (req, res) => {
-  try {
-    const tour = await Tour.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
-    res.status(200).json({
-      status: 'success',
-      data: {
-        tour,
-      },
-    });
-  } catch (err) {
-    res.status(404).json({
-      status: 'fail',
-      message: err,
-    });
-  }
-};
-
-exports.deleteTour = async (req, res) => {
-  try {
-    await Tour.findByIdAndDelete(req.params.id);
-    res.status(204).json({
-      //204 status means no content
-      status: 'success',
-      data: null,
-    });
-  } catch (err) {
-    res.status(404).json({
-      status: 'fail',
-      message: err,
-    });
-  }
-};
-
-exports.getTourStats = async (req, res) => {
-  try {
-    const stats = await Tour.aggregate([
-      // Using Tour model to access the tour collection via mongoose
-      {
-        $match: { ratingsAverage: { $gte: 4.5 } }, // like a query/filter
-      },
-      {
-        $group: {
-          //group documents together using accumulators
-          _id: { $toUpper: '$difficulty' }, // null makes it one big group
-          numTours: { $sum: 1 },
-          numRatings: { $sum: '$ratingsQuantity' },
-          avgRating: { $avg: '$ratingsAverage' },
-          avgPrice: { $avg: '$price' }, // first the operator then the fieldname
-          minPrice: { $min: '$price' },
-          maxPrice: { $max: '$price' },
-        },
-      },
-      {
-        $sort: { avgPrice: 1 },
-      },
-      // {
-      //   $match: {
-      //     _id: { $ne: 'EASY' },
-      //   },
-      // },
-    ]);
-    res.status(200).json({
-      status: 'success',
-      data: {
-        stats,
-      },
-    });
-  } catch (err) {
-    res.status(404).json({
-      status: 'fail',
-      message: err,
-    });
-  }
-};
-
-exports.geMonthlyPlan = async (req, res) => {
-  try {
-    const year = req.params.year * 1;
-
-    const plan = await Tour.aggregate([
-      {
-        $unwind: '$startDates',
-      },
-      {
-        $match: {
-          // to select docuemnts
-          $startDates: {
-            $gte: new Date(`${year}-01-01`),
-            $lte: new Date(`${year}-12-31`),
-          },
-        },
-      },
-    ]);
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        plan,
-      },
-    });
-  } catch (err) {
-    res.status(404).json({
-      status: 'fail',
-      message: err,
-    });
-  }
-};
-//
 //
 // BUILD QUERY
 // // 1A) Filtering

@@ -11,10 +11,7 @@ class APIFeatures {
 
     // 1B) Advanced Filtering
     let queryStr = JSON.stringify(queryObj);
-    queryStr = queryStr.replace(
-      /\b(gte|ge|lte|lt)\b/g,
-      (match) => `$${match}`
-    ); // filter object: { difficulty: 'easy', duration: { $gte: 5 } }
+    queryStr = queryStr.replace(/\b(gte|ge|lte|lt)\b/g, (match) => `$${match}`); // filter object: { difficulty: 'easy', duration: { $gte: 5 } }
 
     this.query = this.query.find(JSON.parse(queryStr));
 

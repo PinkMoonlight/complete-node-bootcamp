@@ -1,6 +1,8 @@
 const express = require('express');
 const morgan = require('morgan');
 
+const AppError = require('./utils/appError');
+const globalErrorHandler = require('./controllers/errorController');
 const tourRouter = require('./routes/tourRoutes');
 const userRouter = require('./routes/userRoutes');
 
@@ -8,20 +10,12 @@ const app = express();
 // top level code - runs at the start
 
 //  MIDDLEWARES  - modify incoming request data (adds to the request)
-//middleware function
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev')); // details about the api requests
 }
-app.use(express.json());
-// MIDDLEWARE SERVING STATIC FILEs
-//app.use(express.static(`${__dirname}/public`));
 
-//middleware function
-app.use((req, res, next) => {
-  console.log('Hello from the middleware 👋');
-  next(); //must include in order for it to move to next function!!
-});
-//middleware function
+app.use(express.json());
+app.use(express.static(`${__dirname}/public`)); // MIDDLEWARE SERVING STATIC FILEs
 
 app.use((req, res, next) => {
   req.requestTime = new Date().toISOString();
@@ -31,6 +25,14 @@ app.use((req, res, next) => {
 /// ROUTES
 app.use('/api/v1/tours', tourRouter); // mounting router
 app.use('/api/v1/users', userRouter); // mounting router
+
+// to catch any url paths that aren't handled above or don't exist
+app.all('*', (req, res, next) => {
+  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404)); // passing something into next() makes espress assume and execute as an error and skip other middlwares
+}); // runs for all http methods
+
+// ERROR HANDLING MIDDLEWARE
+app.use(globalErrorHandler);
 
 module.exports = app;
 
