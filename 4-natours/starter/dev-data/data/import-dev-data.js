@@ -2,6 +2,8 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const Tour = require('../../models/tourModel');
+const Review = require('../../models/reviewModel');
+const User = require('../../models/userModel');
 
 dotenv.config({ path: './config.env' });
 
@@ -19,8 +21,13 @@ mongoose
   })
   .then(() => console.log('DB connection successfull!'));
 
+// READ JSON FILE
 const tours = JSON.parse(
-  fs.readFileSync(`${__dirname}/tours-simple.json`, 'utf-8') // array of javascript objects
+  fs.readFileSync(`${__dirname}/tours.json`, 'utf-8') // array of javascript objects
+);
+const users = JSON.parse(fs.readFileSync(`${__dirname}/users.json`, 'utf-8'));
+const reviews = JSON.parse(
+  fs.readFileSync(`${__dirname}/reviews.json`, 'utf-8')
 );
 
 // IMPORT DATA INTO DATABASE
@@ -28,6 +35,8 @@ const tours = JSON.parse(
 const importData = async () => {
   try {
     await Tour.create(tours);
+    await User.create(users, { validateBeforeSave: false });
+    await Review.create(reviews);
     console.log('Data sucessfully loaded');
   } catch (err) {
     console.log(err);
@@ -38,7 +47,9 @@ const importData = async () => {
 // DELETE ALL THE DATA FROM COLLECTION/DB
 const deleteData = async () => {
   try {
-    await Tour.deleteMany(); // will delete all the documents in the collection when no argument passed in
+    await Tour.deleteMany();
+    await User.deleteMany();
+    await Review.deleteMany(); // will delete all the documents in the collection when no argument passed in
     console.log('Data sucessfully deleted');
   } catch (err) {
     console.log(err);
